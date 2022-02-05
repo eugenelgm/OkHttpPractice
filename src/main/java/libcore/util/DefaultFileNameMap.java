@@ -1,4 +1,4 @@
-package libcore.util;/*
+/*
  * Copyright (C) 2010 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +12,7 @@ package libcore.util;/*
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *//*
+ */
 
 
 package libcore.util;
@@ -22,10 +22,10 @@ import libcore.net.MimeUtils;
 import java.net.FileNameMap;
 import java.util.Locale;
 
-*/
+
 /**
  * Implements {@link FileNameMap} in terms of {@link libcore.net.MimeUtils}.
- *//*
+ */
 
 class DefaultFileNameMap implements FileNameMap {
     public String getContentTypeFor(String filename) {
@@ -45,4 +45,3 @@ class DefaultFileNameMap implements FileNameMap {
         return MimeUtils.guessMimeTypeFromExtension(ext.toLowerCase(Locale.US));
     }
 }
-*/

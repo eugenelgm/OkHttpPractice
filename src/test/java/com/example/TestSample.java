@@ -1,3 +1,5 @@
+package com.example;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
@@ -40,4 +42,6 @@ public class TestSample {
         in.close();
         return response;
     }
+
+
 }

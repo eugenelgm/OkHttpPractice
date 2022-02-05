@@ -9,10 +9,21 @@ repositories {
     mavenCentral()
 }
 
+sourceSets {
+    main {
+        java {
+            srcDirs 'src/java'
+        }
+    }
+}
+
+defaultTasks 'compileJava', 'run'
+
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.6.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+    testImplementation group: 'com.squareup.okhttp3', name: 'mockwebserver', version: '3.0.0'
 }
 
 test {
