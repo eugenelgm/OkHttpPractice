@@ -60,7 +60,6 @@ public class URLConnectionTest {
     @Test
     public void testRequestHeaders() throws IOException, InterruptedException {
         server.enqueue(new MockResponse());
-        //server.start();
 
         OkHttpConnection urlConnection = openConnection(server.url("/"));
         urlConnection.addRequestProperty("D", "e");
