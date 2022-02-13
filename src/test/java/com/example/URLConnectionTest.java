@@ -1,20 +1,16 @@
 package com.example;
 
 import com.squareup.okhttp.OkHttpConnection;
+import okhttp3.Headers;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 
 import java.io.IOException;
-import java.net.Authenticator;
-import java.net.PasswordAuthentication;
-import java.net.ResponseCache;
-import java.net.URL;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.io.InputStream;
+import java.net.*;
+import java.util.*;
 
 import org.junit.jupiter.api.*;
 
@@ -53,6 +49,55 @@ public class URLConnectionTest {
         server.shutdown();
     }
 
+    /**
+     * Reads {@code count} characters from the stream. If the stream is
+     * exhausted before {@code count} characters can be read, the remaining
+     * characters are returned and the stream is closed.
+     */
+    private String readAscii(InputStream in, int count) throws IOException {
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            int value = in.read();
+            if (value == -1) {
+                in.close();
+                break;
+            }
+            result.append((char) value);
+        }
+        return result.toString();
+    }
+
+    /**
+     * Reads at most {@code limit} characters from {@code in} and asserts that
+     * content equals {@code expected}.
+     */
+    private void assertContent(String expected, URLConnection connection, int limit)
+            throws IOException {
+        connection.connect();
+        assertEquals(expected, readAscii(connection.getInputStream(), limit));
+        ((OkHttpConnection) connection).disconnect();
+    }
+
+    private void assertContent(String expected, URLConnection connection) throws IOException {
+        assertContent(expected, connection, Integer.MAX_VALUE);
+    }
+
+    private void assertContains(Headers headers, String header) {
+        assertTrue(/*headers.toString(), */headers.get(header) != null);
+    }
+
+    private void assertContainsNoneMatching(List<String> headers, String pattern) {
+        for (String header : headers) {
+            if (header.matches(pattern)) {
+                fail("Header " + header + " matches " + pattern);
+            }
+        }
+    }
+
+    private Set<String> newSet(String... elements) {
+        return new HashSet<String>(Arrays.asList(elements));
+    }
+
     private static OkHttpConnection openConnection(HttpUrl url) {
         return OkHttpConnection.open(url.url());
     }
@@ -67,8 +112,8 @@ public class URLConnectionTest {
         assertEquals("f", urlConnection.getRequestProperty("D"));
         assertEquals("f", urlConnection.getRequestProperty("d"));
         Map<String, List<String>> requestHeaders = urlConnection.getRequestProperties();
-        //assertEquals(newSet("e", "f"), new HashSet<String>(requestHeaders.get("D")));
-        //assertEquals(newSet("e", "f"), new HashSet<String>(requestHeaders.get("d")));
+        assertEquals(newSet("e", "f"), new HashSet<String>(requestHeaders.get("D")));
+        assertEquals(newSet("e", "f"), new HashSet<String>(requestHeaders.get("d")));
         try {
             requestHeaders.put("G", Arrays.asList("h"));
             fail("Modified an unmodifiable view.");
@@ -94,10 +139,11 @@ public class URLConnectionTest {
         urlConnection.addRequestProperty("AnotherNullValue", null);  // should fail silently!
         assertNull(urlConnection.getRequestProperty("AnotherNullValue"));
 
-        urlConnection.getResponseCode();
+        int code = urlConnection.getResponseCode();
+        assertTrue(code == 200);
         RecordedRequest request = server.takeRequest();
-//        assertContains(request.getHeaders(), "D: e");
-//        assertContains(request.getHeaders(), "D: f");
+        assertContains(request.getHeaders(), "D");
+
 //        assertContainsNoneMatching(request.getHeaders(), "NullValue.*");
 //        assertContainsNoneMatching(request.getHeaders(), "AnotherNullValue.*");
 //        assertContainsNoneMatching(request.getHeaders(), "G:.*");
