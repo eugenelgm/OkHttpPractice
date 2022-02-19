@@ -165,4 +165,20 @@ public class URLConnectionTest {
         } catch (IllegalStateException expected) {
         }
     }
+
+    @Test
+    public void testChunkedConnectionsArePooled() throws Exception {
+        MockResponse response = new MockResponse().setChunkedBody("ABCDEFGHIJKLMNOPQR", 5);
+
+        server.enqueue(response);
+        server.enqueue(response);
+        server.enqueue(response);
+
+        assertContent("ABCDEFGHIJKLMNOPQR", openConnection(server.url("/foo")));
+        assertEquals(0, server.takeRequest().getSequenceNumber());
+        assertContent("ABCDEFGHIJKLMNOPQR", openConnection(server.url("/bar?baz=quux")));
+        assertEquals(1, server.takeRequest().getSequenceNumber());
+        assertContent("ABCDEFGHIJKLMNOPQR", openConnection(server.url("/z")));
+        assertEquals(2, server.takeRequest().getSequenceNumber());
+    }
 }
