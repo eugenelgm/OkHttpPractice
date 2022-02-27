@@ -9,11 +9,13 @@ import okhttp3.mockwebserver.RecordedRequest;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.*;
 import java.util.*;
 
 import org.junit.jupiter.api.*;
 
+import static okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_END;
 import static org.junit.jupiter.api.Assertions.*;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -167,6 +169,41 @@ public class URLConnectionTest {
     }
 
     @Test
+    public void testResponseHeaders() throws IOException, InterruptedException {
+        server.enqueue(new MockResponse()
+                .setStatus("HTTP/1.0 200 Fantastic")
+                .addHeader("A: c")
+                .addHeader("B: d")
+                .addHeader("A: e")
+                .setChunkedBody("ABCDE\nFGHIJ\nKLMNO\nPQR", 8));
+
+        OkHttpConnection urlConnection = openConnection(server.url("/"));
+        assertEquals(200, urlConnection.getResponseCode());
+        assertEquals("Fantastic", urlConnection.getResponseMessage());
+        assertEquals("HTTP/1.0 200 Fantastic", urlConnection.getHeaderField(null));
+        Map<String, List<String>> responseHeaders = urlConnection.getHeaderFields();
+        assertEquals(Arrays.asList("HTTP/1.0 200 Fantastic"), responseHeaders.get(null));
+        assertEquals(newSet("c", "e"), new HashSet<String>(responseHeaders.get("A")));
+        assertEquals(newSet("c", "e"), new HashSet<String>(responseHeaders.get("a")));
+        try {
+            responseHeaders.put("N", Arrays.asList("o"));
+            fail("Modified an unmodifiable view.");
+        } catch (UnsupportedOperationException expected) {
+        }
+        try {
+            responseHeaders.get("A").add("f");
+            fail("Modified an unmodifiable view.");
+        } catch (UnsupportedOperationException expected) {
+        }
+        assertEquals("A", urlConnection.getHeaderFieldKey(0));
+        assertEquals("c", urlConnection.getHeaderField(0));
+        assertEquals("B", urlConnection.getHeaderFieldKey(1));
+        assertEquals("d", urlConnection.getHeaderField(1));
+        assertEquals("A", urlConnection.getHeaderFieldKey(2));
+        assertEquals("e", urlConnection.getHeaderField(2));
+    }
+
+    @Test
     public void testChunkedConnectionsArePooled() throws Exception {
         MockResponse response = new MockResponse().setChunkedBody("ABCDEFGHIJKLMNOPQR", 5);
 
@@ -180,5 +217,81 @@ public class URLConnectionTest {
         assertEquals(1, server.takeRequest().getSequenceNumber());
         assertContent("ABCDEFGHIJKLMNOPQR", openConnection(server.url("/z")));
         assertEquals(2, server.takeRequest().getSequenceNumber());
+    }
+
+    enum TransferKind {
+        CHUNKED() {
+            @Override void setBody(MockResponse response, String content, int chunkSize)
+                    throws IOException {
+                response.setChunkedBody(content, chunkSize);
+            }
+        },
+        FIXED_LENGTH() {
+            @Override void setBody(MockResponse response, String content, int chunkSize) {
+                response.setBody(content);
+            }
+        },
+        /*END_OF_STREAM() {
+            @Override void setBody(MockResponse response, String content, int chunkSize) {
+                response.setBody(content);
+                response.setSocketPolicy(DISCONNECT_AT_END);
+                for (Iterator<String> h = response.getHeaders().iterator(); h.hasNext(); ) {
+                    if (h.next().startsWith("Content-Length:")) {
+                        h.remove();
+                        break;
+                    }
+                }
+            }
+        }*/;
+
+        abstract void setBody(MockResponse response, String content, int chunkSize)
+                throws IOException;
+
+        /*void setBody(MockResponse response, String content, int chunkSize) throws IOException {
+            setBody(response, content.getBytes("UTF-8"), chunkSize);
+        }*/
+    }
+
+    enum WriteKind { BYTE_BY_BYTE, SMALL_BUFFERS, LARGE_BUFFERS }
+
+    @Test
+    public void test_fixedLengthUpload_smallBuffers() throws Exception {
+        doUpload(TransferKind.FIXED_LENGTH, WriteKind.SMALL_BUFFERS);
+    }
+
+    private void doUpload(TransferKind uploadKind, WriteKind writeKind) throws Exception {
+        int n = 512*1024;
+        server.setBodyLimit(0);
+        server.enqueue(new MockResponse());
+
+        OkHttpConnection conn = openConnection(server.url("/"));
+        conn.setDoOutput(true);
+        conn.setRequestMethod("POST");
+        if (uploadKind == TransferKind.CHUNKED) {
+            conn.setChunkedStreamingMode(-1);
+        } else {
+            conn.setFixedLengthStreamingMode(n);
+        }
+        OutputStream out = conn.getOutputStream();
+        if (writeKind == WriteKind.BYTE_BY_BYTE) {
+            for (int i = 0; i < n; ++i) {
+                out.write('x');
+            }
+        } else {
+            byte[] buf = new byte[writeKind == WriteKind.SMALL_BUFFERS ? 256 : 64*1024];
+            Arrays.fill(buf, (byte) 'x');
+            for (int i = 0; i < n; i += buf.length) {
+                out.write(buf, 0, Math.min(buf.length, n - i));
+            }
+        }
+        out.close();
+        assertEquals(200, conn.getResponseCode());
+        RecordedRequest request = server.takeRequest();
+        assertEquals(n, request.getBodySize());
+        if (uploadKind == TransferKind.CHUNKED) {
+            assertTrue(request.getChunkSizes().size() > 0);
+        } else {
+            assertTrue(request.getChunkSizes().isEmpty());
+        }
     }
 }
